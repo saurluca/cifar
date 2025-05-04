@@ -222,7 +222,6 @@ def main():
     learning_rate = 0.01
     val_ratio = 0.2
     num_workers = 8
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
@@ -230,7 +229,7 @@ def main():
     torch.backends.cudnn.benchmark = True
 
     train_loader, val_loader, test_loader = load_cifar10(
-        batch_size, val_ratio, num_workers=num_workers
+        val_ratio=val_ratio, batch_size=batch_size, num_workers=num_workers
     )
 
     model = CustomCNN().to(device)
