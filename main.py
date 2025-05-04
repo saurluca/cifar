@@ -218,7 +218,7 @@ def plot_loss(loss_lst):
 
 def main():
     batch_size = 256
-    epochs = 20
+    epochs = 5
     learning_rate = 0.01
     val_ratio = 0.2
     num_workers = 8
