@@ -119,8 +119,16 @@ def train(train_loader, model, optimiser, loss_fn, epochs):
         print(f"Epoch {epoch+1} Loss: {avg_loss:.4f}")
     
     
-def evaluate():
-    pass    
+def evaluate(test_loader, model):
+    with torch.no_grad():
+        correct_labels = 0
+        num_items = test_loader[0].shape
+        for x, label in tqdm(test_loader):
+            label_pred = model(x)
+            correct_labels += label == label_pred
+        accuracy = correct_labels / num_items
+        print(f"accuracy {accuracy}")
+        
 
 
 def main():
