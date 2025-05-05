@@ -1,4 +1,6 @@
 from tqdm import tqdm
+import os
+import logging
 
 import torch
 import torch.nn as nn
@@ -6,6 +8,12 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from torcheval.metrics import MulticlassAccuracy
 import matplotlib.pyplot as plt
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger(__name__)
+
+RESULTS_DIR = "results/"
 
 
 def load_cifar100(val_ratio, batch_size=128, shuffle=True, num_workers=4):
@@ -133,17 +141,17 @@ class CustomCNN(torch.nn.Module):
             nn.BatchNorm2d(12),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2),
-            nn.Dropout(0.1),
+            nn.Dropout(0.3),
         )
         self.conv_2 = nn.Sequential(
             nn.Conv2d(in_channels=12, out_channels=24, kernel_size=3, padding=1),
             nn.BatchNorm2d(24),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2),
-            nn.Dropout(0.1),
+            nn.Dropout(0.3),
         )
         self.fc_1 = nn.Sequential(
-            nn.Linear(24 * 8 * 8, 128), nn.BatchNorm1d(128), nn.ReLU()
+            nn.Linear(24 * 8 * 8, 128), nn.BatchNorm1d(128), nn.ReLU(), nn.Dropout(0.3)
         )
         self.fc_2 = nn.Sequential(nn.Linear(128, 64), nn.BatchNorm1d(64), nn.ReLU())
         self.fc_final = nn.Sequential(
@@ -160,8 +168,34 @@ class CustomCNN(torch.nn.Module):
         return x
 
 
-def train(train_loader, model, optimiser, loss_fn, epochs, device):
-    loss_lst = []
+def evaluate(data_loader, model, loss_fn, device):
+    model.eval()  # Set model to evaluation mode
+    with torch.no_grad():
+        running_loss = 0.0
+        metric = MulticlassAccuracy().to(device)  # Move metric to device
+        for x, label in tqdm(data_loader):
+            # Move data to device non-blocking
+            x = x.to(device, non_blocking=True)
+            label = label.to(device, non_blocking=True)
+
+            label_pred = model(x)
+            loss = loss_fn(label_pred, label)
+            running_loss += loss.item()  # Convert loss to float immediately
+            metric.update(label_pred, label)
+
+        accuracy = metric.compute()
+        avg_loss = running_loss / len(data_loader)
+
+        logger.info(
+            f"Evaluation - Accuracy: {accuracy.item():.4f}, Loss: {avg_loss:.4f}"
+        )
+        return accuracy.item(), avg_loss  # Convert accuracy to float
+
+
+def train(train_loader, vald_loader, model, optimiser, loss_fn, epochs, device):
+    train_Loss = []
+    val_accuracy = []
+    val_loss = []
     for epoch in tqdm(range(epochs), desc="Training"):
         model.train()
         running_loss = 0.0
@@ -178,47 +212,73 @@ def train(train_loader, model, optimiser, loss_fn, epochs, device):
             optimiser.step()
             running_loss += loss.item()
 
-        # calcualte average loss per batch for final loss
+        # calculate average loss per batch for final loss
         avg_loss = running_loss / len(train_loader)
-        loss_lst.append(avg_loss)
-        # print(f"Epoch {epoch + 1} Loss: {avg_loss:.4f}")
-    return loss_lst
+        train_Loss.append(avg_loss)
+        logger.info(f"Epoch {epoch + 1} Training Loss: {avg_loss:.4f}")
+
+        # evaluate on validation set
+        eval_accuracy, eval_loss = evaluate(vald_loader, model, loss_fn, device)
+        val_accuracy.append(eval_accuracy)  # Already converted to float in evaluate
+        val_loss.append(eval_loss)
+
+        logger.info(
+            f"Epoch {epoch + 1} - Train Loss: {avg_loss:.4f}, Val Loss: {eval_loss:.4f}, Val Acc: {eval_accuracy:.4f}"
+        )
+    return train_Loss, val_accuracy, val_loss
 
 
-def evaluate(test_loader, model, device):
-    model.eval()  # Set model to evaluation mode
-    with torch.no_grad():
-        metric = MulticlassAccuracy().to(device)  # Move metric to device
-        for x, label in tqdm(test_loader):
-            # Move data to device non-blocking
-            x = x.to(device, non_blocking=True)
-            label = label.to(device, non_blocking=True)
+def plot_loss(train_Loss, val_loss):
+    # Force conversion to make sure we have Python floats
+    train_Loss = [float(x) if torch.is_tensor(x) else float(x) for x in train_Loss]
+    val_loss = [float(x) if torch.is_tensor(x) else float(x) for x in val_loss]
 
-            label_pred = model(x)
-            metric.update(label_pred, label)
-
-        accuracy = metric.compute()
-        print(f"Accuracy: {accuracy:.4f}")
-
-
-def plot_loss(loss_lst):
     plt.figure(figsize=(10, 6))
-    plt.plot(range(1, len(loss_lst) + 1), loss_lst, marker="o")
-    plt.title("Training Loss Over Epochs")
+    plt.plot(
+        range(1, len(train_Loss) + 1), train_Loss, marker="o", label="Training Loss"
+    )
+    plt.plot(range(1, len(val_loss) + 1), val_loss, marker="o", label="Validation Loss")
+    plt.title("Training and Validation Loss Over Epochs")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
+    plt.legend()
     plt.grid(True)
 
-    # Save the plot
-    plt.savefig("training_loss.png")
+    # Save the plot to RESULTS_DIR
+    os.makedirs(RESULTS_DIR, exist_ok=True)  # Create directory if it doesn't exist
+    plt.savefig(RESULTS_DIR + "training_and_validation_loss.png")
     plt.close()
 
-    print("Training loss plot saved as 'training_loss.png'")
+    print(
+        f"Training and validation loss plot saved as '{RESULTS_DIR}training_and_validation_loss.png'"
+    )
+
+
+def plot_accuracy(accuracy):
+    # Force conversion to make sure we have Python floats
+    accuracy = [float(x) if torch.is_tensor(x) else float(x) for x in accuracy]
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(
+        range(1, len(accuracy) + 1), accuracy, marker="o", label="Validation Accuracy"
+    )
+    plt.title("Validation Accuracy Over Epochs")
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy (%)")  # Updated to show it's percentage
+    plt.legend()
+    plt.grid(True)
+
+    # Save the plot to RESULTS_DIR
+    os.makedirs(RESULTS_DIR, exist_ok=True)  # Create directory if it doesn't exist
+    plt.savefig(RESULTS_DIR + "validation_accuracy.png")
+    plt.close()
+
+    print(f"Validation accuracy plot saved as '{RESULTS_DIR}validation_accuracy.png'")
 
 
 def main():
     batch_size = 256
-    epochs = 5
+    epochs = 15
     learning_rate = 0.01
     val_ratio = 0.2
     num_workers = 8
@@ -236,11 +296,21 @@ def main():
     optimiser = torch.optim.Adam(model.parameters(), lr=learning_rate)
     loss_fn = nn.CrossEntropyLoss().to(device)  # Move loss function to device
 
-    loss_lst = train(train_loader, model, optimiser, loss_fn, epochs, device)
+    train_Loss, val_accuracy, val_loss = train(
+        train_loader, val_loader, model, optimiser, loss_fn, epochs, device
+    )
 
-    evaluate(test_loader, model, device)
+    accuracy, avg_loss = evaluate(test_loader, model, loss_fn, device)
 
-    plot_loss(loss_lst)
+    print(50 * "-")
+    print(f"Final Val Accuracy: {val_accuracy[-1] * 100:.1f}%")
+    print(f"Final Val Loss: {val_loss[-1]:.4f}")
+    print()
+    print(f"Test Accuracy: {accuracy * 100:.1f}%")
+    print(f"Average Test Loss: {avg_loss:.4f}")
+
+    plot_loss(train_Loss, val_loss)
+    plot_accuracy(val_accuracy)
 
 
 if __name__ == "__main__":
