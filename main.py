@@ -52,6 +52,7 @@ def load_cifar100(val_ratio, batch_size=128, shuffle=True, num_workers=4):
         shuffle=shuffle,
         pin_memory=True,
         num_workers=num_workers,
+        persistent_workers=True,
     )
 
     val_loader = DataLoader(
@@ -60,6 +61,7 @@ def load_cifar100(val_ratio, batch_size=128, shuffle=True, num_workers=4):
         shuffle=False,  # No need to shuffle validation set
         pin_memory=True,
         num_workers=num_workers,
+        persistent_workers=True,
     )
 
     test_loader = DataLoader(
@@ -68,6 +70,7 @@ def load_cifar100(val_ratio, batch_size=128, shuffle=True, num_workers=4):
         shuffle=False,
         pin_memory=True,
         num_workers=num_workers,
+        persistent_workers=True,
     )
 
     return train_loader, val_loader, test_loader
@@ -168,6 +171,43 @@ class CustomCNN(torch.nn.Module):
         return x
 
 
+class SimpleNet(torch.nn.Module):
+    def __init__(
+        self, model_dim=1024, num_layers=4, dropout=0.3, activation_function="relu"
+    ):
+        super(SimpleNet, self).__init__()
+        self.fc_layers = nn.ModuleList()
+
+        # create a list of linear layers
+        self.fc_input = nn.Sequential(
+            nn.Linear(32 * 32 * 3, model_dim),
+            nn.BatchNorm1d(model_dim),
+            get_activation_function(activation_function),
+            nn.Dropout(dropout),
+        )
+        for _ in range(num_layers):
+            self.fc_layers.append(
+                nn.Sequential(
+                    nn.Linear(model_dim, model_dim),
+                    nn.BatchNorm1d(model_dim),
+                    get_activation_function(activation_function),
+                    nn.Dropout(dropout),
+                )
+            )
+
+        self.fc_final = nn.Sequential(
+            nn.Linear(model_dim, 10),
+        )
+
+    def forward(self, x):
+        x = x.view(-1, 32 * 32 * 3)
+        x = self.fc_input(x)
+        for fc_layer in self.fc_layers:
+            x = fc_layer(x)
+        x = self.fc_final(x)
+        return x
+
+
 def evaluate(data_loader, model, loss_fn, device):
     model.eval()  # Set model to evaluation mode
     with torch.no_grad():
@@ -192,7 +232,9 @@ def evaluate(data_loader, model, loss_fn, device):
         return accuracy.item(), avg_loss  # Convert accuracy to float
 
 
-def train(train_loader, vald_loader, model, optimiser, loss_fn, epochs, device):
+def train(
+    train_loader, vald_loader, model, optimiser, lr_scheduler, loss_fn, epochs, device
+):
     train_Loss = []
     val_accuracy = []
     val_loss = []
@@ -221,6 +263,8 @@ def train(train_loader, vald_loader, model, optimiser, loss_fn, epochs, device):
         eval_accuracy, eval_loss = evaluate(vald_loader, model, loss_fn, device)
         val_accuracy.append(eval_accuracy)  # Already converted to float in evaluate
         val_loss.append(eval_loss)
+
+        lr_scheduler.step(eval_loss)
 
         logger.info(
             f"Epoch {epoch + 1} - Train Loss: {avg_loss:.4f}, Val Loss: {eval_loss:.4f}, Val Acc: {eval_accuracy:.4f}"
@@ -276,28 +320,86 @@ def plot_accuracy(accuracy):
     print(f"Validation accuracy plot saved as '{RESULTS_DIR}validation_accuracy.png'")
 
 
-def main():
-    batch_size = 256
-    epochs = 15
-    learning_rate = 0.01
-    val_ratio = 0.2
-    num_workers = 8
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+def get_activation_function(activation_function):
+    if activation_function == "relu":
+        return nn.ReLU()
+    elif activation_function == "gelu":
+        return nn.GELU()
+    elif activation_function == "elu":
+        return nn.ELU()
+    else:
+        raise ValueError(f"Activation function {activation_function} not supported")
 
+
+def main():
     # Enable cuDNN auto-tuner
     torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.fastest = True
+    torch.set_float32_matmul_precision('high')
+
+    val_ratio = 0.2
+    num_workers = 8
+    # training parameters
+    batch_size = 256
+    epochs = 40
+    learning_rate = 0.005
+    weight_decay = 0.0001
+    lr_scheduler_patience = 6
+    lr_scheduler_factor = 0.2
+    seed = 42
+    # model
+    model_dim = 1024
+    num_layers = 4
+    dropout = 0.2
+    activation_function = "elu"
+    
+    # Set seed for reproducibility
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
 
     train_loader, val_loader, test_loader = load_cifar10(
         val_ratio=val_ratio, batch_size=batch_size, num_workers=num_workers
     )
 
-    model = CustomCNN().to(device)
-    optimiser = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    model = SimpleNet(
+        model_dim=model_dim,
+        num_layers=num_layers,
+        dropout=dropout,
+        activation_function=activation_function,
+    ).to(device)
+
+    # Compile the model for better performance
+    try:
+        model = torch.compile(model)
+        print("Model successfully compiled with torch.compile()")
+    except Exception as e:
+        print(f"Could not compile model: {e}. Continuing with uncompiled model.")
+
+    print(f"model parameters: {sum(p.numel() for p in model.parameters()) / 1000:.1f}k")
+
+    optimiser = torch.optim.Adam(
+        model.parameters(), lr=learning_rate, weight_decay=weight_decay
+    )
     loss_fn = nn.CrossEntropyLoss().to(device)  # Move loss function to device
+    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimiser,
+        factor=lr_scheduler_factor,
+        patience=lr_scheduler_patience,
+    )
 
     train_Loss, val_accuracy, val_loss = train(
-        train_loader, val_loader, model, optimiser, loss_fn, epochs, device
+        train_loader,
+        val_loader,
+        model,
+        optimiser,
+        lr_scheduler,
+        loss_fn,
+        epochs,
+        device,
     )
 
     accuracy, avg_loss = evaluate(test_loader, model, loss_fn, device)
