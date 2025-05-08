@@ -181,7 +181,7 @@ class SimpleNet(torch.nn.Module):
         # create a list of linear layers
         self.fc_input = nn.Sequential(
             nn.Linear(32 * 32 * 3, model_dim),
-            nn.BatchNorm1d(model_dim),
+            # nn.BatchNorm1d(model_dim),
             get_activation_function(activation_function),
             nn.Dropout(dropout),
         )
@@ -189,7 +189,7 @@ class SimpleNet(torch.nn.Module):
             self.fc_layers.append(
                 nn.Sequential(
                     nn.Linear(model_dim, model_dim),
-                    nn.BatchNorm1d(model_dim),
+                    # nn.BatchNorm1d(model_dim),
                     get_activation_function(activation_function),
                     nn.Dropout(dropout),
                 )
@@ -233,7 +233,14 @@ def evaluate(data_loader, model, loss_fn, device):
 
 
 def train(
-    train_loader, vald_loader, model, optimiser, lr_scheduler, loss_fn, epochs, device
+    train_loader,
+    vald_loader,
+    model,
+    optimiser,
+    loss_fn,
+    epochs,
+    device,
+    lr_scheduler=None,
 ):
     train_Loss = []
     val_accuracy = []
@@ -264,7 +271,8 @@ def train(
         val_accuracy.append(eval_accuracy)  # Already converted to float in evaluate
         val_loss.append(eval_loss)
 
-        lr_scheduler.step(eval_loss)
+        if lr_scheduler:
+            lr_scheduler.step(eval_loss)
 
         logger.info(
             f"Epoch {epoch + 1} - Train Loss: {avg_loss:.4f}, Val Loss: {eval_loss:.4f}, Val Acc: {eval_accuracy:.4f}"
@@ -335,24 +343,25 @@ def main():
     # Enable cuDNN auto-tuner
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.fastest = True
-    torch.set_float32_matmul_precision('high')
+    torch.set_float32_matmul_precision("high")
 
     val_ratio = 0.2
     num_workers = 8
     # training parameters
-    batch_size = 256
-    epochs = 40
-    learning_rate = 0.005
-    weight_decay = 0.0001
-    lr_scheduler_patience = 6
+    batch_size = 128
+    epochs = 80
+    learning_rate = 0.001
+    weight_decay = 0.000001
+    lr_scheduler_patience = 10
     lr_scheduler_factor = 0.2
+    momentum = 0.9
     seed = 42
     # model
-    model_dim = 1024
-    num_layers = 4
-    dropout = 0.2
-    activation_function = "elu"
-    
+    model_dim = 128
+    num_layers = 3
+    dropout = 0.1
+    activation_function = "relu"
+
     # Set seed for reproducibility
     torch.manual_seed(seed)
     if torch.cuda.is_available():
@@ -381,8 +390,11 @@ def main():
 
     print(f"model parameters: {sum(p.numel() for p in model.parameters()) / 1000:.1f}k")
 
-    optimiser = torch.optim.Adam(
-        model.parameters(), lr=learning_rate, weight_decay=weight_decay
+    optimiser = torch.optim.SGD(
+        model.parameters(),
+        lr=learning_rate,
+        weight_decay=weight_decay,
+        momentum=momentum,
     )
     loss_fn = nn.CrossEntropyLoss().to(device)  # Move loss function to device
     lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -396,10 +408,10 @@ def main():
         val_loader,
         model,
         optimiser,
-        lr_scheduler,
         loss_fn,
         epochs,
         device,
+        lr_scheduler=lr_scheduler,
     )
 
     accuracy, avg_loss = evaluate(test_loader, model, loss_fn, device)
