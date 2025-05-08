@@ -1,8 +1,9 @@
 import pytest
+from custom_nn import ReLU
 
 
-def add(a, b):
-    return a+b
-
-def test_positive_numbers():
-    assert add(2, 3) == 5
+def test_relu_forward():
+    relu = ReLU()
+    assert relu.forward(1) == 1
+    assert relu.forward(0) == 0
+    assert relu.forward(-0.2) == 0

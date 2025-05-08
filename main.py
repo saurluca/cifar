@@ -350,7 +350,7 @@ def main():
     # training parameters
     batch_size = 128
     epochs = 80
-    learning_rate = 0.001
+    learning_rate = 0.01
     weight_decay = 0.000001
     lr_scheduler_patience = 10
     lr_scheduler_factor = 0.2
@@ -358,9 +358,9 @@ def main():
     seed = 42
     # model
     model_dim = 128
-    num_layers = 3
+    num_layers = 8
     dropout = 0.1
-    activation_function = "relu"
+    activation_function = "elu"
 
     # Set seed for reproducibility
     torch.manual_seed(seed)
