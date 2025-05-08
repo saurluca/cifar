@@ -350,17 +350,16 @@ def main():
     # training parameters
     batch_size = 128
     epochs = 80
-    learning_rate = 0.01
+    learning_rate = 0.1
     weight_decay = 0.000001
     lr_scheduler_patience = 10
     lr_scheduler_factor = 0.2
-    momentum = 0.9
     seed = 42
     # model
     model_dim = 128
-    num_layers = 8
-    dropout = 0.1
-    activation_function = "elu"
+    num_layers = 24
+    dropout = 0.0
+    activation_function = "gelu"
 
     # Set seed for reproducibility
     torch.manual_seed(seed)
@@ -394,7 +393,6 @@ def main():
         model.parameters(),
         lr=learning_rate,
         weight_decay=weight_decay,
-        momentum=momentum,
     )
     loss_fn = nn.CrossEntropyLoss().to(device)  # Move loss function to device
     lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
