@@ -181,7 +181,7 @@ class SimpleNet(torch.nn.Module):
         # create a list of linear layers
         self.fc_input = nn.Sequential(
             nn.Linear(32 * 32 * 3, model_dim),
-            # nn.BatchNorm1d(model_dim),
+            nn.BatchNorm1d(model_dim),
             get_activation_function(activation_function),
             nn.Dropout(dropout),
         )
@@ -189,7 +189,7 @@ class SimpleNet(torch.nn.Module):
             self.fc_layers.append(
                 nn.Sequential(
                     nn.Linear(model_dim, model_dim),
-                    # nn.BatchNorm1d(model_dim),
+                    nn.BatchNorm1d(model_dim),
                     get_activation_function(activation_function),
                     nn.Dropout(dropout),
                 )
@@ -349,17 +349,17 @@ def main():
     num_workers = 8
     # training parameters
     batch_size = 128
-    epochs = 80
+    epochs = 20
     learning_rate = 0.1
     weight_decay = 0.000001
     lr_scheduler_patience = 10
     lr_scheduler_factor = 0.2
     seed = 42
     # model
-    model_dim = 128
-    num_layers = 24
-    dropout = 0.0
-    activation_function = "gelu"
+    model_dim = 64
+    num_layers = 4
+    dropout = 0.2
+    activation_function = "relu"
 
     # Set seed for reproducibility
     torch.manual_seed(seed)
