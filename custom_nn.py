@@ -15,8 +15,9 @@ class SigmoidCrossEntropy:
 class ReLU:
     def __init__(self):
         self.input = None
-
+    
     def forward(self, input):
+        return max(0, input)
         raise NotImplementedError("Not implemented")
 
     def backward(self, grad):

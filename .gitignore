@@ -12,3 +12,6 @@ wheels/
 # Data
 data/*
 results/*
+
+.ruff_cache/
+.pytest_cache/
