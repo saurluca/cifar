@@ -2,13 +2,13 @@ import numpy as np
 
 VERBOSE = True
 
-class SigmoidCrossEntropy:
+class Module:
     def __init__(self):
         self.input = None
 
     def forward(self, input):
         raise NotImplementedError("Not implemented")
-
+        
     def backward(self, grad):
         raise NotImplementedError("Not implemented")
 
@@ -16,26 +16,56 @@ class SigmoidCrossEntropy:
         return self.forward(x)
 
 
-class ReLU:
+class Sigmoid(Module):
+    def _get_sigmoid_value(self, x):
+        return 1 / (1 + np.exp(-x))
+        
+    def forward(self, x):
+        return self._get_sigmoid_value(x)
+
+    def backward(self, grad):
+        raise NotImplementedError("Not implemented")
+        # derivative is  _get_sigmoid_value(x) * (1 - _get_sigmoid_value(x))
+        
+        
+class Softmax(Module):       
+    def forward(self, x):
+        exp_values = np.exp(x)
+        return exp_values / np.sum(exp_values)
+
+    def backward(self, grad):
+        raise NotImplementedError("Not implemented")
+        
+
+class CrossEntropyLoss(Module):
+    def __init__(self):
+        self.input = None
+
+    def forward(self, y_pred, y):
+        loss = 0 
+        
+        # TODO make more efficent
+        for i in range(len(y_pred)):
+            loss += (-1 * y[i] * np.log(y_pred[i]))
+        
+        return loss
+        
+    def backward(self, grad):
+        raise NotImplementedError("Not implemented")
+
+
+class ReLU(Module):
     def __init__(self):
         self.input = None
     
     def forward(self, x):
         return np.maximum(0, x)
-        raise NotImplementedError("Not implemented")
 
     def backward(self, grad):
         raise NotImplementedError("Not implemented")
 
-    # needed?
-    def step(self):
-        raise NotImplementedError("Not implemented")
-    
-    def __call__(self, x):
-        return self.forward(x)
 
-
-class LinearLayer:
+class LinearLayer(Module):
     def __init__(self, input_d, output_d, weights=None, bias=None, use_bias=True):
         self.input = None
         self.input_d = input_d
@@ -53,7 +83,6 @@ class LinearLayer:
             # using He initialization of weights
             self.weights = np.random.normal(loc=0, scale=np.sqrt(2.0/input_d), size=(input_d, output_d))
 
-
     def forward(self, x):
         if VERBOSE:
             print(f"multiplying {x} with {self.weights}")
@@ -64,7 +93,6 @@ class LinearLayer:
         if VERBOSE:
             print(f"result with bias { y }")
         return y
-        raise NotImplementedError("Not implemented")
 
     def backward(self, grad):
         raise NotImplementedError("Not implemented")
@@ -73,12 +101,8 @@ class LinearLayer:
     def step(self):
         raise NotImplementedError("Not implemented")
     
-    # if object of this class is called, invoke forward of input x
-    def __call__(self, x):
-        return self.forward(x)
 
-
-class FeedForwardNeuralNetwork:
+class FeedForwardNeuralNetwork(Module):
     def __init__(self, n_layers, model_d, input_d, output_d, weights=None):
         self.n_layers = n_layers
         self.model_d = model_d
@@ -113,7 +137,6 @@ class FeedForwardNeuralNetwork:
             x = self.activation_fn(x)
         x = self.final_layer(x)
         return x
-        raise NotImplementedError("Not implemented")
 
     def backward(self, grad):
         raise NotImplementedError("Not implemented")
@@ -122,9 +145,6 @@ class FeedForwardNeuralNetwork:
     def step(self):
         raise NotImplementedError("Not implemented")
     
-    def __call__(self, x):
-        return self.forward(x)
-
 
 def load_data():
     raise NotImplementedError("Not implemented")
