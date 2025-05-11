@@ -1,6 +1,6 @@
 import numpy as np
 
-VERBOSE = True
+VERBOSE = False
 
 class Module:
     def __init__(self):
@@ -84,6 +84,11 @@ class LinearLayer(Module):
             self.weights = np.random.normal(loc=0, scale=np.sqrt(2.0/input_d), size=(input_d, output_d))
 
     def forward(self, x):
+        if np.isscalar(x):
+           x = np.array([x])
+           if VERBOSE:
+               print("x is scalar, converting to 1D array")
+               
         if VERBOSE:
             print(f"multiplying {x} with {self.weights}")
         y = np.matmul(x, self.weights)
@@ -109,6 +114,7 @@ class FeedForwardNeuralNetwork(Module):
         self.input_d = input_d
         self.output_d = output_d
         self.activation_fn = ReLU()
+        self.final_activation_fn = Sigmoid()
 
         # assert len(weights) == 2 + n_layers
         # assert len(weights[0]) == input_d
@@ -136,6 +142,9 @@ class FeedForwardNeuralNetwork(Module):
             x = layer(x)
             x = self.activation_fn(x)
         x = self.final_layer(x)
+        
+        if self.final_activation_fn:
+            x = self.final_activation_fn(x)
         return x
 
     def backward(self, grad):
@@ -146,12 +155,37 @@ class FeedForwardNeuralNetwork(Module):
         raise NotImplementedError("Not implemented")
     
 
-def load_data():
+def load_data(n_samples=10):
+    x = np.random.uniform(-10, 10, 10) 
+    # generates label 0 for negative 1 for positve
+    y = np.maximum(0, np.sign(x))
+    data = list(zip(x,y))
+    return data
+        
+    
     raise NotImplementedError("Not implemented")
 
 
-def train():
-    raise NotImplementedError("Not implemented")
+def train(model, loss_fn, train_set):
+    train_loss = 0
+    correct_n = 0
+    
+    for x, y in train_set:
+        print("input x", x)
+        y_pred = model(x)
+        print("y_pred", y_pred)
+        train_loss += loss_fn(y_pred, y)
+        
+        if np.round(y_pred) == y:
+            correct_n += 1
+    
+    accuracy = correct_n / len(train_set)
+    
+    print(f"correct_n: {correct_n}, len train_set: {len(train_set)}")
+    print("accuracy", accuracy)
+    print("loss", train_loss)
+        
+    return train_loss, accuracy
 
 
 def evaluate():
@@ -166,37 +200,34 @@ def plot_accuracy():
     raise NotImplementedError("Not implemented")
 
 
-def main():
-    input_d = 2
-    output_d = 2
-    model_d = 3
+def fake_loss_fn(y_pred, y):
+    return 1  
+
+
+class BCELoss(Module):
+    def forward(self, y_pred, y):
+        return -np.mean(y * np.log(y_pred) + (1-y)*np.log(1-y_pred))
+    
+    def __call__(self, y_pred, y):
+        return self.forward(y_pred, y)
+    
+
+def main():  
+    input_d = 1
+    model_d = 2
     n_layers = 1
+    output_d = 1
+    np.random.seed(42)
     
-    # Create weights with all 1s:
-    # First layer: input_d -> model_d (2x3)
-    # Hidden layer: model_d -> model_d (3x3) 
-    # Final layer: model_d -> output_d (3x2)
-    weights = [
-        [[1.0, 1.0, 1.0],  # First layer weights (2x3)
-         [1.0, 1.0, 1.0]], 
-        [[1.0, 1.0, 1.0],  # Hidden layer weights (3x3)
-         [1.0, 1.0, 1.0],
-         [1.0, 1.0, 1.0]],
-        [[1.0, 1.0],       # Final layer weights (3x2)
-         [1.0, 1.0],
-         [1.0, 1.0]]
-    ]
-    weights= None
-    model = FeedForwardNeuralNetwork(n_layers, model_d, input_d, output_d, weights=weights)
-    print(model)
-    
-    sample_data = np.array([2, 2])
-    result = model(sample_data)
-    
-    # relu = ReLU()
-    # result = relu(sample_data)
-    
-    print("result", result)
+    # lets build a postive / negative number classifer
+    train_set = load_data(10)
+
+    model = FeedForwardNeuralNetwork(n_layers, model_d, input_d, output_d)
+
+    loss_fn = BCELoss()
+        
+    train_loss, accuracy = train(model, loss_fn, train_set)
+
 
 if __name__ == "__main__":
     main()
